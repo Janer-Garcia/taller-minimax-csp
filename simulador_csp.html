@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador CSP: Asignación de Tareas mediante Backtracking</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #cbd5e1;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --accent: #2563eb;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+    .container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    
+    header { background: var(--surface); padding: 18px 24px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
+    .subtitle { font-size: 0.85rem; color: var(--text-muted); }
+
+    .main-grid { display: grid; grid-template-columns: 380px 1fr; gap: 20px; }
+    @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+    .card-title { font-size: 0.95rem; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+
+    /* Tarjetas de Variables y Píldoras de Dominio */
+    .var-card { background: #f8fafc; border: 1.5px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 10px; transition: 0.2s; }
+    .var-card.active { border-color: var(--accent); background: #eff6ff; }
+    .var-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .var-title { font-weight: 700; font-size: 0.9rem; }
+    .var-status { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); }
+
+    .pills-container { display: flex; gap: 6px; }
+    .pill {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: #334155;
+      transition: 0.2s;
+    }
+    .pill.assigned { background: #dcfce7; border-color: #86efac; color: #15803d; }
+    .pill.eliminated { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; text-decoration: line-through; opacity: 0.5; }
+
+    /* Toggle Switch */
+    .toggle-row { background: #f1f5f9; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; margin: 14px 0; display: flex; justify-content: space-between; align-items: center; }
+    .switch { position: relative; display: inline-block; width: 44px; height: 22px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .2s; border-radius: 22px; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--accent); }
+    input:checked + .slider:before { transform: translateX(22px); }
+
+    /* Controles */
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    button { background: #f8fafc; color: var(--text); border: 1px solid var(--border); padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.15s; }
+    button:hover:not(:disabled) { background: #e2e8f0; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+
+    .trace-box { background: #f8fafc; border-left: 4px solid var(--accent); padding: 12px; border-radius: 4px; font-size: 0.85rem; min-height: 80px; margin-bottom: 12px; }
+    .metric-row { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; }
+    .metric-val { font-weight: 700; color: #0f172a; }
+
+    /* Árbol Jerárquico de Decisiones */
+    .tree-scroll { overflow-y: auto; max-height: 640px; padding: 12px; background: #fff; border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; gap: 8px; }
+    .tree-node-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.82rem;
+      background: #f8fafc;
+      transition: 0.15s;
+    }
+    .tree-node-row.current-active { border-color: var(--accent); background: #eff6ff; font-weight: 600; }
+    .tree-node-row.node-sol { border-color: #86efac; background: #f0fdf4; color: #166534; }
+    .tree-node-row.node-fail { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+
+    .tag-badge { font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+    .tag-sol { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .tag-fail { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .tag-bt { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div>
+      <h1>Taller: Asignación de Tareas mediante CSP</h1>
+      <div class="subtitle">Orden de Variables: Ana &rarr; Luis &rarr; Carlos &bull; Orden de Valores: T1 &rarr; T2 &rarr; T3</div>
+    </div>
+    <div style="font-size:0.85rem; font-weight:600; color:var(--text-muted);">
+      Restricción: Asignación biyectiva (Alldiff)
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- Panel Izquierdo: Variables, Dominios y Configuración -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="card">
+        <div class="card-title">
+          <span>Variables y Dominios Reactivos</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);" id="current-var-status">En espera</span>
+        </div>
+
+        <!-- Ana -->
+        <div class="var-card" id="card_A">
+          <div class="var-header">
+            <span class="var-title">Ana (A)</span>
+            <span class="var-status" id="assign_A">Sin asignar</span>
+          </div>
+          <div class="pills-container">
+            <span class="pill" id="pill_A_T1">T1</span>
+            <span class="pill" id="pill_A_T2">T2</span>
+          </div>
+        </div>
+
+        <!-- Luis -->
+        <div class="var-card" id="card_L">
+          <div class="var-header">
+            <span class="var-title">Luis (L)</span>
+            <span class="var-status" id="assign_L">Sin asignar</span>
+          </div>
+          <div class="pills-container">
+            <span class="pill" id="pill_L_T1">T1</span>
+            <span class="pill" id="pill_L_T3">T3</span>
+          </div>
+        </div>
+
+        <!-- Carlos -->
+        <div class="var-card" id="card_C">
+          <div class="var-header">
+            <span class="var-title">Carlos (C)</span>
+            <span class="var-status" id="assign_C">Sin asignar</span>
+          </div>
+          <div class="pills-container">
+            <span class="pill" id="pill_C_T2">T2</span>
+            <span class="pill" id="pill_C_T3">T3</span>
+          </div>
+        </div>
+
+        <!-- Toggle Restricción Carlos ≠ T3 -->
+        <div class="toggle-row">
+          <div>
+            <div style="font-weight:700; font-size:0.85rem;">Restricción: Carlos ≠ T3</div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">Parte D del Taller</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="constraint-toggle" onchange="runCSPAlgorithm()">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="controls">
+          <button id="btn-prev" onclick="stepBack()">◀ Anterior</button>
+          <button id="btn-next" class="primary" onclick="stepForward()">Siguiente ▶</button>
+          <button id="btn-play" onclick="togglePlay()">Reproducir ⏵</button>
+          <button id="btn-reset" onclick="runCSPAlgorithm()">Reiniciar ↺</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Traza y Explicación</div>
+        <div class="trace-box" id="trace-desc">Iniciando resolución del CSP...</div>
+        <div>
+          <div class="metric-row"><span>Soluciones válidas:</span><span class="metric-val" id="metric-sols" style="color:var(--success);">0</span></div>
+          <div class="metric-row"><span>Ramas descartadas (Ø):</span><span class="metric-val" id="metric-fails" style="color:var(--danger);">0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel Derecho: Árbol Visual con Sangría Jerárquica -->
+    <div class="card" style="display:flex; flex-direction:column;">
+      <div class="card-title">
+        <span>Árbol de Búsqueda por Backtracking (Indentación Jerárquica)</span>
+        <span style="font-size:0.75rem; color:var(--text-muted);">Profundidad: Raíz &rarr; A &rarr; L &rarr; C</span>
+      </div>
+      <div class="tree-scroll" id="tree-log-container"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Motor real de Backtracking con Comprobación Hacia Delante (Forward Checking)
+const VAR_NAMES = ['A', 'L', 'C'];
+const VAL_NAMES = ['T1', 'T2', 'T3'];
+let cspSteps = [];
+
+function solveCSP(extraConstraint) {
+  cspSteps = [];
+  
+  // Dominios iniciales según el enunciado del taller
+  const initialDomains = {
+    A: ['T1', 'T2'],
+    L: ['T1', 'T3'],
+    C: extraConstraint ? ['T2'] : ['T2', 'T3']
+  };
+
+  cspSteps.push({
+    depth: 0,
+    currVar: null,
+    assign: {},
+    domains: cloneD(initialDomains),
+    type: 'root',
+    desc: `Raíz: Asignación vacía {}. Dominios iniciales cargados. ${extraConstraint ? 'Restricción Carlos ≠ T3 aplicada: DC={T2}.' : 'Sin restricción adicional.'}`
+  });
+
+  backtrackingRecursive({}, initialDomains, 0);
+
+  cspSteps.push({
+    depth: 0,
+    currVar: null,
+    assign: {},
+    domains: cloneD(initialDomains),
+    type: 'end',
+    desc: 'Búsqueda completada exhaustivamente. No quedan más alternativas en el árbol.'
+  });
+}
+
+function backtrackingRecursive(assign, domains, varIdx) {
+  if (varIdx === VAR_NAMES.length) {
+    // Solución encontrada
+    cspSteps.push({
+      depth: varIdx,
+      currVar: null,
+      assign: { ...assign },
+      domains: cloneD(domains),
+      type: 'solution',
+      desc: `¡SOLUCIÓN VÁLIDA ENCONTRADA!: Ana = ${assign.A}, Luis = ${assign.L}, Carlos = ${assign.C}.`
+    });
+    return;
+  }
+
+  const vName = VAR_NAMES[varIdx];
+  const candidates = VAL_NAMES.filter(val => domains[vName].includes(val));
+
+  for (const val of candidates) {
+    const nextAssign = { ...assign, [vName]: val };
+    const nextDomains = cloneD(domains);
+    nextDomains[vName] = [val];
+
+    let wipeout = false;
+    let conflictVar = null;
+
+    // Forward Checking sobre variables restantes
+    for (let j = varIdx + 1; j < VAR_NAMES.length; j++) {
+      const future = VAR_NAMES[j];
+      nextDomains[future] = nextDomains[future].filter(item => item !== val);
+      if (nextDomains[future].length === 0) {
+        wipeout = true;
+        conflictVar = future;
+      }
+    }
+
+    cspSteps.push({
+      depth: varIdx + 1,
+      currVar: vName,
+      assign: nextAssign,
+      domains: cloneD(nextDomains),
+      type: wipeout ? 'failure' : 'assign',
+      desc: wipeout
+        ? `Asignar ${vName} = ${val} provoca que el dominio de ${conflictVar} quede VACÍO (Ø). ¡Conflicto de restricción!`
+        : `Asignar ${vName} = ${val}. Reducción de dominios por Forward Checking completada con éxito.`
+    });
+
+    if (!wipeout) {
+      backtrackingRecursive(nextAssign, nextDomains, varIdx + 1);
+    }
+
+    // Retroceso (Backtracking)
+    cspSteps.push({
+      depth: varIdx + 1,
+      currVar: vName,
+      assign: { ...assign },
+      domains: cloneD(domains),
+      type: 'backtrack',
+      desc: `Retroceso (Backtracking) desde ${vName} = ${val}. Restaurando dominios previos.`
+    });
+  }
+}
+
+function cloneD(d) {
+  return { A: [...d.A], L: [...d.L], C: [...d.C] };
+}
+
+// Control UI
+let currentStepIdx = 0;
+let playInterval = null;
+
+function runCSPAlgorithm() {
+  togglePlay(false);
+  currentStepIdx = 0;
+  const extra = document.getElementById('constraint-toggle').checked;
+  solveCSP(extra);
+  updateUI();
+}
+
+function updateUI() {
+  const step = cspSteps[currentStepIdx];
+  if (!step) return;
+
+  document.getElementById('trace-desc').innerText = `[Paso ${currentStepIdx + 1} de ${cspSteps.length}] ${step.desc}`;
+  document.getElementById('current-var-status').innerText = step.currVar ? `Evaluando: ${step.currVar}` : 'Listo';
+
+  // Actualizar tarjetas de empleados y dominios
+  VAR_NAMES.forEach(v => {
+    const card = document.getElementById(`card_${v}`);
+    card.classList.remove('active');
+    if (step.currVar === v) card.classList.add('active');
+
+    const statusEl = document.getElementById(`assign_${v}`);
+    const assignedVal = step.assign[v];
+    statusEl.innerText = assignedVal ? `Asignado: ${assignedVal}` : 'Sin asignar';
+    statusEl.style.color = assignedVal ? 'var(--success)' : 'var(--text-muted)';
+
+    // Actualización dinámica de píldoras
+    ['T1', 'T2', 'T3'].forEach(task => {
+      const p = document.getElementById(`pill_${v}_${task}`);
+      if (!p) return;
+
+      if (assignedVal === task) {
+        p.className = 'pill assigned';
+      } else if (step.domains[v].includes(task)) {
+        p.className = 'pill';
+      } else {
+        p.className = 'pill eliminated';
+      }
+    });
+  });
+
+  // Renderizar árbol acumulado con sangría jerárquica
+  const container = document.getElementById('tree-log-container');
+  container.innerHTML = '';
+  let solCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i <= currentStepIdx; i++) {
+    const item = cspSteps[i];
+    const row = document.createElement('div');
+    const indentPx = Math.max(0, item.depth - 1) * 24;
+
+    let badge = '';
+    let rowClass = 'tree-node-row';
+
+    if (item.type === 'solution') {
+      badge = '<span class="tag-badge tag-sol">Solución</span>';
+      rowClass += ' node-sol';
+      solCount++;
+    } else if (item.type === 'failure') {
+      badge = '<span class="tag-badge tag-fail">Fallo Ø</span>';
+      rowClass += ' node-fail';
+      failCount++;
+    } else if (item.type === 'backtrack') {
+      badge = '<span class="tag-badge tag-bt">Backtrack</span>';
+    }
+
+    if (i === currentStepIdx) rowClass += ' current-active';
+
+    row.className = rowClass;
+    row.style.marginLeft = `${indentPx}px`;
+    row.innerHTML = `<span><strong>Paso ${i}:</strong> ${item.desc}</span> ${badge}`;
+    container.appendChild(row);
+  }
+
+  container.scrollTop = container.scrollHeight;
+
+  document.getElementById('metric-sols').innerText = solCount;
+  document.getElementById('metric-fails').innerText = failCount;
+
+  document.getElementById('btn-prev').disabled = (currentStepIdx === 0);
+  document.getElementById('btn-next').disabled = (currentStepIdx === cspSteps.length - 1);
+}
+
+function stepForward() {
+  if (currentStepIdx < cspSteps.length - 1) {
+    currentStepIdx++;
+    updateUI();
+  } else {
+    togglePlay(false);
+  }
+}
+
+function stepBack() {
+  if (currentStepIdx > 0) {
+    currentStepIdx--;
+    updateUI();
+  }
+}
+
+function togglePlay(force) {
+  const btn = document.getElementById('btn-play');
+  if (playInterval || force === false) {
+    clearInterval(playInterval);
+    playInterval = null;
+    btn.innerText = 'Reproducir ⏵';
+  } else {
+    btn.innerText = 'Pausar ⏸';
+    playInterval = setInterval(stepForward, 1100);
+  }
+}
+
+window.onload = runCSPAlgorithm;
+</script>
+</body>
+</html>

@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulador Nim: Minimax y Poda Alfa-Beta</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --border: #cbd5e1;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --max-color: #ef4444;
+      --min-color: #3b82f6;
+      --term-color: #22c55e;
+      --pruned-color: #dc2626;
+      --active-gold: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); padding: 24px; line-height: 1.5; }
+    .container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+    
+    header { background: var(--surface); padding: 18px 24px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    h1 { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
+    .subtitle { font-size: 0.85rem; color: var(--text-muted); }
+
+    .main-grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; }
+    @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+    .card-title { font-size: 0.95rem; font-weight: 700; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center; }
+
+    /* Tablero Nim minimalista */
+    .board-box { background: #f1f5f9; border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+    .row-nim { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+    .row-name { font-size: 0.85rem; font-weight: 600; width: 60px; color: var(--text-muted); }
+    .token-slot { width: 30px; height: 30px; border-radius: 50%; background: #0284c7; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 0.8rem; box-shadow: 0 1px 3px rgba(0,0,0,0.15); transition: 0.3s; }
+    .token-slot.empty { background: #cbd5e1; box-shadow: none; opacity: 0.3; }
+
+    /* Controles */
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    button { background: #f8fafc; color: var(--text); border: 1px solid var(--border); padding: 8px 14px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: 0.15s; }
+    button:hover:not(:disabled) { background: #e2e8f0; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary { background: #2563eb; color: #fff; border-color: #1d4ed8; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    select { background: #fff; border: 1px solid var(--border); padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; outline: none; }
+
+    /* Traza y métricas */
+    .trace-box { background: #f8fafc; border-left: 4px solid #2563eb; padding: 12px; border-radius: 4px; font-size: 0.85rem; min-height: 80px; margin-bottom: 12px; }
+    .metric-row { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px; }
+    .metric-val { font-weight: 700; color: #0f172a; }
+
+    /* Leyenda académica */
+    .legend-box { display: flex; gap: 14px; align-items: center; font-size: 0.8rem; color: var(--text-muted); padding-top: 8px; border-top: 1px solid var(--border); }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+
+    /* Árbol Gráfico con Nodos en Triángulo y Círculo */
+    .tree-viewport { overflow: auto; padding: 20px; background: #fff; border: 1px solid var(--border); border-radius: 8px; max-height: 720px; }
+    .tree-wrapper ul { display: flex; justify-content: center; padding-top: 24px; position: relative; gap: 10px; }
+    .tree-wrapper li { float: left; text-align: center; list-style-type: none; position: relative; padding: 24px 4px 0 4px; }
+    .tree-wrapper li::before, .tree-wrapper li::after { content: ''; position: absolute; top: 0; right: 50%; border-top: 1.5px solid #94a3b8; width: 50%; height: 24px; }
+    .tree-wrapper li::after { right: auto; left: 50%; border-left: 1.5px solid #94a3b8; }
+    .tree-wrapper li:only-child::after, .tree-wrapper li:only-child::before { display: none; }
+    .tree-wrapper li:only-child { padding-top: 0; }
+    .tree-wrapper li:first-child::before, .tree-wrapper li:last-child::after { border: 0 none; }
+    .tree-wrapper li:last-child::before { border-right: 1.5px solid #94a3b8; border-radius: 0 4px 0 0; }
+    .tree-wrapper li:first-child::after { border-radius: 4px 0 0 0; }
+    .tree-wrapper ul ul::before { content: ''; position: absolute; top: 0; left: 50%; border-left: 1.5px solid #94a3b8; width: 0; height: 24px; }
+
+    /* Componente de Nodo Gráfico */
+    .node-container {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 6px;
+      transition: 0.2s;
+    }
+    .node-container.active-node {
+      background: #fef3c7;
+      outline: 2px solid var(--active-gold);
+    }
+    .node-container.pruned-branch {
+      opacity: 0.35;
+      filter: grayscale(70%);
+    }
+    .pruned-overlay {
+      display: none;
+      position: absolute;
+      top: 10px;
+      font-size: 1.6rem;
+      font-weight: bold;
+      color: var(--pruned-color);
+      z-index: 10;
+    }
+    .node-container.pruned-branch .pruned-overlay { display: block; }
+
+    .node-meta { font-size: 0.72rem; font-weight: 700; color: #334155; margin-top: 2px; }
+    .node-move { font-size: 0.65rem; color: var(--text-muted); }
+    .node-bounds { font-size: 0.65rem; color: #475569; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div>
+      <h1>Taller: Nim con Minimax y Poda Alfa-Beta</h1>
+      <div class="subtitle">Estado Inicial [1, 3] &bull; Inicia MAX &bull; Gana quien retira el último objeto</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <label for="mode-select" style="font-size:0.85rem; font-weight:600;">Modo Algoritmo:</label>
+      <select id="mode-select" onchange="resetAlgorithm()">
+        <option value="alphabeta">Poda Alfa-Beta (DFS con poda)</option>
+        <option value="minimax">Minimax Completo (Exhaustivo)</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- Panel Izquierdo: Tablero, Controles y Traza -->
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="card">
+        <div class="card-title">
+          <span>Tablero de Nim</span>
+          <span id="player-indicator" style="font-size:0.75rem; font-weight:700; padding:2px 8px; border-radius:10px; background:#fee2e2; color:#b91c1c;">Turno: MAX</span>
+        </div>
+        <div class="board-box">
+          <div class="row-nim">
+            <span class="row-name">Fila 1:</span>
+            <div id="row1-render" style="display:flex; gap:8px;"></div>
+          </div>
+          <div class="row-nim">
+            <span class="row-name">Fila 2:</span>
+            <div id="row2-render" style="display:flex; gap:8px;"></div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="btn-prev" onclick="stepBack()">◀ Anterior</button>
+          <button id="btn-next" class="primary" onclick="stepForward()">Siguiente ▶</button>
+          <button id="btn-play" onclick="togglePlay()">Reproducir ⏵</button>
+          <button id="btn-reset" onclick="resetAlgorithm()">Reiniciar ↺</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Traza de Ejecución y Métricas</div>
+        <div class="trace-box" id="trace-desc">Cargando árbol de juego...</div>
+        
+        <div>
+          <div class="metric-row"><span>Nodos explorados:</span><span class="metric-val" id="metric-visited">0 / 28</span></div>
+          <div class="metric-row"><span>Ramas podadas:</span><span class="metric-val" id="metric-pruned" style="color:var(--pruned-color);">0</span></div>
+          <div class="metric-row"><span>Decisión óptima MAX:</span><span class="metric-val" id="metric-decision" style="color:#15803d;">Calculando...</span></div>
+        </div>
+
+        <div class="legend-box" style="margin-top:14px;">
+          <div class="legend-item">
+            <svg width="18" height="18" viewBox="0 0 40 36"><polygon points="20,2 38,34 2,34" fill="#ef4444" stroke="#b91c1c" stroke-width="2"/></svg>
+            <span>MAX</span>
+          </div>
+          <div class="legend-item">
+            <svg width="18" height="18" viewBox="0 0 40 36"><polygon points="2,4 38,4 20,34" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/></svg>
+            <span>MIN</span>
+          </div>
+          <div class="legend-item">
+            <svg width="18" height="18" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="#22c55e" stroke="#15803d" stroke-width="2"/></svg>
+            <span>Terminal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel Derecho: Árbol Visual Completo -->
+    <div class="card" style="display:flex; flex-direction:column;">
+      <div class="card-title">
+        <span>Árbol de Decisión Completo (28 Nodos Totales)</span>
+        <span style="font-size:0.75rem; color:var(--text-muted);">Orden: Fila 1 &rarr; Fila 2 | Retirar: 1, 2, 3</span>
+      </div>
+      <div class="tree-viewport">
+        <div class="tree-wrapper" id="tree-container"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Construcción algorítmica recursiva del árbol completo de Nim
+let nodeIdCounter = 0;
+function buildNimTree(state, turn, moveStr) {
+  const isTerminal = (state[0] === 0 && state[1] === 0);
+  const node = {
+    id: ++nodeIdCounter,
+    state: [...state],
+    turn: turn,
+    moveStr: moveStr,
+    isTerminal: isTerminal,
+    val: isTerminal ? (turn === 'MIN' ? 1 : -1) : null, // Si le correspondía a MIN, MAX tomó la última ficha (+1)
+    alpha: -Infinity,
+    beta: Infinity,
+    children: [],
+    pruned: false
+  };
+
+  if (isTerminal) return node;
+
+  const nextTurn = (turn === 'MAX') ? 'MIN' : 'MAX';
+
+  // Orden estricto del taller:
+  // 1. Fila 1 antes de Fila 2
+  // 2. Cantidades ascendentes: 1, luego 2, luego 3...
+  if (state[0] > 0) {
+    for (let take = 1; take <= state[0]; take++) {
+      node.children.push(buildNimTree([state[0] - take, state[1]], nextTurn, `F1 -${take}`));
+    }
+  }
+  if (state[1] > 0) {
+    for (let take = 1; take <= state[1]; take++) {
+      node.children.push(buildNimTree([state[0], state[1] - take], nextTurn, `F2 -${take}`));
+    }
+  }
+
+  return node;
+}
+
+// Generador dinámico de la traza de pasos (DFS con o sin Poda Alfa-Beta)
+let traceSteps = [];
+function executeSearch(node, useAlphaBeta, alpha = -Infinity, beta = Infinity) {
+  node.alpha = alpha;
+  node.beta = beta;
+
+  traceSteps.push({
+    nodeId: node.id,
+    type: 'visit',
+    state: node.state,
+    turn: node.turn,
+    alpha: alpha,
+    beta: beta,
+    desc: `Visita ${node.turn} en estado [${node.state.join(',')}]. Límites: [α: ${fmt(alpha)}, β: ${fmt(beta)}].`
+  });
+
+  if (node.isTerminal) {
+    traceSteps.push({
+      nodeId: node.id,
+      type: 'terminal',
+      state: node.state,
+      turn: node.turn,
+      val: node.val,
+      desc: `Estado Terminal [0,0]. El último objeto fue retirado. Victoria de ${node.val === 1 ? 'MAX (+1)' : 'MIN (-1)'}.`
+    });
+    return node.val;
+  }
+
+  if (node.turn === 'MAX') {
+    let v = -Infinity;
+    for (let i = 0; i < node.children.length; i++) {
+      const child = node.children[i];
+      const childVal = executeSearch(child, useAlphaBeta, alpha, beta);
+      v = Math.max(v, childVal);
+      alpha = Math.max(alpha, v);
+      node.val = v;
+      node.alpha = alpha;
+
+      traceSteps.push({
+        nodeId: node.id,
+        type: 'update',
+        state: node.state,
+        turn: node.turn,
+        val: v,
+        alpha: alpha,
+        beta: beta,
+        desc: `MAX [${node.state.join(',')}] evalúa hijo ${child.moveStr}. Valor = ${fmt(v)}, α = ${fmt(alpha)}.`
+      });
+
+      if (useAlphaBeta && beta <= alpha) {
+        // Poda Alfa
+        for (let j = i + 1; j < node.children.length; j++) {
+          flagPruned(node.children[j]);
+        }
+        traceSteps.push({
+          nodeId: node.id,
+          type: 'prune',
+          state: node.state,
+          turn: node.turn,
+          desc: `¡CORTE ALFA en MAX! Condición β (${fmt(beta)}) ≤ α (${fmt(alpha)}) cumplida. Se descartan ramas hermanas.`
+        });
+        break;
+      }
+    }
+    return v;
+  } else {
+    let v = Infinity;
+    for (let i = 0; i < node.children.length; i++) {
+      const child = node.children[i];
+      const childVal = executeSearch(child, useAlphaBeta, alpha, beta);
+      v = Math.min(v, childVal);
+      beta = Math.min(beta, v);
+      node.val = v;
+      node.beta = beta;
+
+      traceSteps.push({
+        nodeId: node.id,
+        type: 'update',
+        state: node.state,
+        turn: node.turn,
+        val: v,
+        alpha: alpha,
+        beta: beta,
+        desc: `MIN [${node.state.join(',')}] evalúa hijo ${child.moveStr}. Valor = ${fmt(v)}, β = ${fmt(beta)}.`
+      });
+
+      if (useAlphaBeta && beta <= alpha) {
+        // Poda Beta (Se produce en MIN [1,2] cuando beta = -1 <= alpha = -1)
+        for (let j = i + 1; j < node.children.length; j++) {
+          flagPruned(node.children[j]);
+        }
+        traceSteps.push({
+          nodeId: node.id,
+          type: 'prune',
+          state: node.state,
+          turn: node.turn,
+          desc: `¡CORTE BETA en MIN! Condición β (${fmt(beta)}) ≤ α (${fmt(alpha)}) cumplida. Se poda la rama restante (F2 -2).`
+        });
+        break;
+      }
+    }
+    return v;
+  }
+}
+
+function flagPruned(n) {
+  n.pruned = true;
+  n.children.forEach(flagPruned);
+}
+
+function fmt(x) {
+  if (x === -Infinity) return '-∞';
+  if (x === Infinity) return '+∞';
+  return (x > 0) ? `+${x}` : `${x}`;
+}
+
+// Generación del árbol en HTML usando SVG para los triángulos y círculos exactos
+function renderNodeToHTML(node) {
+  let shapeSVG = '';
+  if (node.isTerminal) {
+    shapeSVG = `
+      <svg width="34" height="34" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15" fill="#22c55e" stroke="#15803d" stroke-width="2.5"/>
+        <text x="18" y="23" text-anchor="middle" font-weight="bold" font-size="13" fill="#ffffff">${node.val > 0 ? '+'+node.val : node.val}</text>
+      </svg>`;
+  } else if (node.turn === 'MAX') {
+    shapeSVG = `
+      <svg width="38" height="34" viewBox="0 0 40 36">
+        <polygon points="20,2 38,34 2,34" fill="#ef4444" stroke="#b91c1c" stroke-width="2.5"/>
+        <text id="val-svg-${node.id}" x="20" y="27" text-anchor="middle" font-weight="bold" font-size="13" fill="#ffffff">?</text>
+      </svg>`;
+  } else {
+    shapeSVG = `
+      <svg width="38" height="34" viewBox="0 0 40 36">
+        <polygon points="2,4 38,4 20,34" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2.5"/>
+        <text id="val-svg-${node.id}" x="20" y="18" text-anchor="middle" font-weight="bold" font-size="13" fill="#ffffff">?</text>
+      </svg>`;
+  }
+
+  let html = `<li>
+    <div class="node-container" id="node-box-${node.id}">
+      <span class="pruned-overlay">✕</span>
+      ${shapeSVG}
+      <div class="node-meta">[${node.state.join(',')}]</div>
+      <div class="node-move">${node.moveStr || 'Raíz'}</div>
+      <div class="node-bounds" id="bounds-${node.id}">[α, β]</div>
+    </div>`;
+
+  if (node.children && node.children.length > 0) {
+    html += '<ul>';
+    node.children.forEach(ch => { html += renderNodeToHTML(ch); });
+    html += '</ul>';
+  }
+  html += '</li>';
+  return html;
+}
+
+// Variables globales de ejecución
+let rootTree = null;
+let currentStep = 0;
+let playTimer = null;
+
+function resetAlgorithm() {
+  togglePlay(false);
+  nodeIdCounter = 0;
+  traceSteps = [];
+  currentStep = 0;
+
+  const mode = document.getElementById('mode-select').value;
+  const isAlphaBeta = (mode === 'alphabeta');
+
+  rootTree = buildNimTree([1, 3], 'MAX', null);
+  executeSearch(rootTree, isAlphaBeta);
+
+  // Renderizar DOM
+  document.getElementById('tree-container').innerHTML = `<ul>${renderNodeToHTML(rootTree)}</ul>`;
+
+  // Aplicar clases a ramas podadas
+  applyPrunedDOM(rootTree);
+
+  updateUI();
+}
+
+function applyPrunedDOM(node) {
+  if (node.pruned) {
+    const el = document.getElementById(`node-box-${node.id}`);
+    if (el) el.classList.add('pruned-branch');
+  }
+  node.children.forEach(applyPrunedDOM);
+}
+
+function updateUI() {
+  const step = traceSteps[currentStep];
+  if (!step) return;
+
+  renderBoard(step.state);
+
+  const pBadge = document.getElementById('player-indicator');
+  pBadge.innerText = `Turno: ${step.turn}`;
+  pBadge.style.background = (step.turn === 'MAX') ? '#fee2e2' : '#dbeafe';
+  pBadge.style.color = (step.turn === 'MAX') ? '#b91c1c' : '#1d4ed8';
+
+  // Resaltado de nodo activo
+  document.querySelectorAll('.node-container').forEach(n => n.classList.remove('active-node'));
+  const activeBox = document.getElementById(`node-box-${step.nodeId}`);
+  if (activeBox) {
+    activeBox.classList.add('active-node');
+    activeBox.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }
+
+  // Actualizar cotas y valores
+  const boundsEl = document.getElementById(`bounds-${step.nodeId}`);
+  if (boundsEl && step.alpha !== undefined) {
+    boundsEl.innerText = `[${fmt(step.alpha)}, ${fmt(step.beta)}]`;
+  }
+  if (step.val !== undefined) {
+    const valText = document.getElementById(`val-svg-${step.nodeId}`);
+    if (valText) valText.textContent = (step.val > 0) ? `+${step.val}` : `${step.val}`;
+  }
+
+  document.getElementById('trace-desc').innerText = `[Paso ${currentStep + 1} de ${traceSteps.length}] ${step.desc}`;
+  document.getElementById('metric-visited').innerText = `${currentStep + 1} / 28`;
+
+  const isAlphaBeta = (document.getElementById('mode-select').value === 'alphabeta');
+  document.getElementById('metric-pruned').innerText = isAlphaBeta ? '1 rama (2 nodos ahorrados)' : '0 (Búsqueda completa)';
+
+  if (currentStep === traceSteps.length - 1) {
+    document.getElementById('metric-decision').innerText = 'Fila 2: retirar 2 objetos → estado [1,1] (+1)';
+  } else {
+    document.getElementById('metric-decision').innerText = 'Explorando...';
+  }
+
+  document.getElementById('btn-prev').disabled = (currentStep === 0);
+  document.getElementById('btn-next').disabled = (currentStep === traceSteps.length - 1);
+}
+
+function renderBoard(b) {
+  const r1 = document.getElementById('row1-render');
+  const r2 = document.getElementById('row2-render');
+  r1.innerHTML = '';
+  r2.innerHTML = '';
+
+  for (let i = 0; i < 1; i++) {
+    const d = document.createElement('div');
+    d.className = 'token-slot ' + (i >= b[0] ? 'empty' : '');
+    d.innerText = '1';
+    r1.appendChild(d);
+  }
+  for (let i = 0; i < 3; i++) {
+    const d = document.createElement('div');
+    d.className = 'token-slot ' + (i >= b[1] ? 'empty' : '');
+    d.innerText = (i + 1);
+    r2.appendChild(d);
+  }
+}
+
+function stepForward() {
+  if (currentStep < traceSteps.length - 1) {
+    currentStep++;
+    updateUI();
+  } else {
+    togglePlay(false);
+  }
+}
+
+function stepBack() {
+  if (currentStep > 0) {
+    currentStep--;
+    updateUI();
+  }
+}
+
+function togglePlay(force) {
+  const btn = document.getElementById('btn-play');
+  if (playTimer || force === false) {
+    clearInterval(playTimer);
+    playTimer = null;
+    btn.innerText = 'Reproducir ⏵';
+  } else {
+    btn.innerText = 'Pausar ⏸';
+    playTimer = setInterval(stepForward, 1000);
+  }
+}
+
+window.onload = resetAlgorithm;
+</script>
+</body>
+</html>
